@@ -76,7 +76,7 @@ class Pipeline:
             use_tiny_vae=args.taesd,
             device=device,
             dtype=torch_dtype,
-            t_index_list=[35, 45],
+            t_index_list=[25, 30],
             frame_buffer_size=1,
             width=params.width,
             height=params.height,

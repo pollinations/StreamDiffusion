@@ -1,14 +1,16 @@
-diffusers==0.24.0
-transformers==4.35.2
+diffusers==0.34.0
+transformers==4.55.0
 --extra-index-url https://download.pytorch.org/whl/cu121;
-torch
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
 fastapi==0.104.1
 uvicorn[standard]==0.24.0.post1
 Pillow==10.1.0
-accelerate==0.24.0
+accelerate==1.10.0
 compel==2.0.2
 controlnet-aux==0.0.7
-peft==0.6.0
-xformers; sys_platform != 'darwin' or platform_machine != 'arm64'
+peft==0.17.0
+huggingface-hub==0.34.4
+xformers==0.0.22.post7; sys_platform != 'darwin' or platform_machine != 'arm64'
 markdown2
 stable_fast @ https://github.com/chengzeyi/stable-fast/releases/download/v0.0.15.post1/stable_fast-0.0.15.post1+torch211cu121-cp310-cp310-manylinux2014_x86_64.whl; sys_platform=='linux'
