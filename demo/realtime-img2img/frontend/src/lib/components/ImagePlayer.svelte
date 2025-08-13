@@ -37,6 +37,7 @@
 
 <div
   class="relative mx-auto aspect-square max-w-lg self-center overflow-hidden rounded-lg border border-slate-300"
+  class:hidden={isFullscreen}
 >
   <!-- svelte-ignore a11y-missing-attribute -->
   {#if isLCMRunning && $streamId}
@@ -82,12 +83,14 @@
     on:keydown={(e) => e.key === 'Enter' && toggleFullscreen()}
   >
     <img
-      class="max-h-full max-w-full object-contain"
+      bind:this={imageEl}
+      class="max-h-full max-w-full object-contain will-change-auto"
       src={'/api/stream/' + $streamId}
       alt="Fullscreen AI Image"
+      loading="eager"
     />
     <button
-      class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300"
+      class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300 transition-colors duration-200"
       on:click|stopPropagation={toggleFullscreen}
     >
       ✕
