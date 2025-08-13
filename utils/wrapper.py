@@ -6,7 +6,7 @@ from typing import List, Literal, Optional, Union, Dict
 
 import numpy as np
 import torch
-from diffusers import AutoencoderTiny, StableDiffusionPipeline
+from diffusers import AutoencoderTiny, StableDiffusionPipeline, StableDiffusionXLPipeline
 from PIL import Image
 
 from streamdiffusion import StreamDiffusion
@@ -47,6 +47,7 @@ class StreamDiffusionWrapper:
         seed: int = 2,
         use_safety_checker: bool = False,
         engine_dir: Optional[Union[str, Path]] = "engines",
+        sdxl: bool = None
     ):
         """
         Initializes the StreamDiffusionWrapper.
@@ -115,6 +116,13 @@ class StreamDiffusionWrapper:
             Whether to use safety checker or not, by default False.
         """
         self.sd_turbo = "turbo" in model_id_or_path
+        
+        if sdxl is None:
+            self.sdxl = "xl" in model_id_or_path
+        else:
+            self.sdxl = sdxl
+        
+        self.default_tiny_vae = "madebyollin/taesdxl" if self.sdxl else "madebyollin/taesd"
 
         if mode == "txt2img":
             if cfg_type != "none":
@@ -164,6 +172,9 @@ class StreamDiffusionWrapper:
             seed=seed,
             engine_dir=engine_dir,
         )
+        
+        if hasattr(self.stream.unet, 'config'):
+            self.stream.unet.config.addition_embed_type = None
 
         if device_ids is not None:
             self.stream.unet = torch.nn.DataParallel(
@@ -224,8 +235,8 @@ class StreamDiffusionWrapper:
         Union[Image.Image, List[Image.Image]]
             The generated image.
         """
-        if self.mode == "img2img":
-            return self.img2img(image, prompt)
+        if self.mode == "img2img":         
+            return self.img2img(image, prompt)            
         else:
             return self.txt2img(prompt)
 
@@ -412,20 +423,35 @@ class StreamDiffusionWrapper:
         StreamDiffusion
             The loaded model.
         """
+        if self.sdxl:
+            try:  # Load from local directory
+                pipe: StableDiffusionXLPipeline = StableDiffusionXLPipeline.from_pretrained(
+                    model_id_or_path,
+                ).to(device=self.device, dtype=self.dtype)
 
-        try:  # Load from local directory
-            pipe: StableDiffusionPipeline = StableDiffusionPipeline.from_pretrained(
-                model_id_or_path,
-            ).to(device=self.device, dtype=self.dtype)
+            except ValueError:  # Load from huggingface
+                pipe: StableDiffusionXLPipeline = StableDiffusionXLPipeline.from_single_file(
+                    model_id_or_path,
+                ).to(device=self.device, dtype=self.dtype)
+            except Exception:  # No model found
+                traceback.print_exc()
+                print("Model load has failed. Doesn't exist.")
+                exit()
+        else:
+            try:  # Load from local directory
+                pipe: StableDiffusionPipeline = StableDiffusionPipeline.from_pretrained(
+                    model_id_or_path,
+                ).to(device=self.device, dtype=self.dtype)
 
-        except ValueError:  # Load from huggingface
-            pipe: StableDiffusionPipeline = StableDiffusionPipeline.from_single_file(
-                model_id_or_path,
-            ).to(device=self.device, dtype=self.dtype)
-        except Exception:  # No model found
-            traceback.print_exc()
-            print("Model load has failed. Doesn't exist.")
-            exit()
+            except ValueError:  # Load from huggingface
+                pipe: StableDiffusionPipeline = StableDiffusionPipeline.from_single_file(
+                    model_id_or_path,
+                ).to(device=self.device, dtype=self.dtype)
+            except Exception:  # No model found
+                traceback.print_exc()
+                print("Model load has failed. Doesn't exist.")
+                exit()
+
 
         stream = StreamDiffusion(
             pipe=pipe,
@@ -460,10 +486,10 @@ class StreamDiffusionWrapper:
                     device=pipe.device, dtype=pipe.dtype
                 )
             else:
-                stream.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd").to(
-                    device=pipe.device, dtype=pipe.dtype
+                stream.vae = AutoencoderTiny.from_pretrained(self.default_tiny_vae).to(
+                    device=pipe.device, dtype=pipe.dtype            
                 )
-
+                
         try:
             if acceleration == "xformers":
                 stream.pipe.enable_xformers_memory_efficient_attention()

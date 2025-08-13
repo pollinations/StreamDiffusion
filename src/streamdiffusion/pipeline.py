@@ -4,7 +4,7 @@ from typing import List, Optional, Union, Any, Dict, Tuple, Literal
 import numpy as np
 import PIL.Image
 import torch
-from diffusers import LCMScheduler, StableDiffusionPipeline
+from diffusers import LCMScheduler, StableDiffusionPipeline, StableDiffusionXLPipeline, DiffusionPipeline
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img import (
     retrieve_latents,
@@ -12,11 +12,10 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img impo
 
 from streamdiffusion.image_filter import SimilarImageFilter
 
-
 class StreamDiffusion:
     def __init__(
         self,
-        pipe: StableDiffusionPipeline,
+        pipe: DiffusionPipeline,
         t_index_list: List[int],
         torch_dtype: torch.dtype = torch.float16,
         width: int = 512,
@@ -73,8 +72,10 @@ class StreamDiffusion:
         self.text_encoder = pipe.text_encoder
         self.unet = pipe.unet
         self.vae = pipe.vae
-
+        
         self.inference_time_ema = 0
+
+        self.sdxl = type(self.pipe) is StableDiffusionXLPipeline
 
     def load_lcm_lora(
         self,
@@ -166,6 +167,20 @@ class StreamDiffusion:
             negative_prompt=negative_prompt,
         )
         self.prompt_embeds = encoder_output[0].repeat(self.batch_size, 1, 1)
+
+        if self.sdxl:
+            self.add_text_embeds = encoder_output[2]
+            original_size = (self.height, self.width)
+            crops_coords_top_left = (0, 0)
+            target_size = (self.height, self.width)
+            text_encoder_projection_dim = int(self.add_text_embeds.shape[-1])
+            self.add_time_ids = self._get_add_time_ids(
+                original_size,
+                crops_coords_top_left,
+                target_size,
+                dtype=encoder_output[0].dtype,
+                text_encoder_projection_dim=text_encoder_projection_dim,
+            )
 
         if self.use_denoising_batch and self.cfg_type == "full":
             uncond_prompt_embeds = encoder_output[1].repeat(self.batch_size, 1, 1)
@@ -299,7 +314,8 @@ class StreamDiffusion:
         self,
         x_t_latent: torch.Tensor,
         t_list: Union[torch.Tensor, list[int]],
-        idx: Optional[int] = None,
+        added_cond_kwargs, 
+        idx: Optional[int] = None, 
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if self.guidance_scale > 1.0 and (self.cfg_type == "initialize"):
             x_t_latent_plus_uc = torch.concat([x_t_latent[0:1], x_t_latent], dim=0)
@@ -314,9 +330,9 @@ class StreamDiffusion:
             x_t_latent_plus_uc,
             t_list,
             encoder_hidden_states=self.prompt_embeds,
+            added_cond_kwargs=added_cond_kwargs,
             return_dict=False,
         )[0]
-
         if self.guidance_scale > 1.0 and (self.cfg_type == "initialize"):
             noise_pred_text = model_pred[1:]
             self.stock_noise = torch.concat(
@@ -370,6 +386,24 @@ class StreamDiffusion:
 
         return denoised_batch, model_pred
 
+    def _get_add_time_ids(
+        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+    ):
+        add_time_ids = list(original_size + crops_coords_top_left + target_size)
+
+        passed_add_embed_dim = (
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
+        )
+        expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
+
+        if expected_add_embed_dim != passed_add_embed_dim:
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
+            )
+
+        add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
+        return add_time_ids
+
     def encode_image(self, image_tensors: torch.Tensor) -> torch.Tensor:
         image_tensors = image_tensors.to(
             device=self.device,
@@ -380,15 +414,15 @@ class StreamDiffusion:
         x_t_latent = self.add_noise(img_latent, self.init_noise[0], 0)
         return x_t_latent
 
-    def decode_image(self, x_0_pred_out: torch.Tensor) -> torch.Tensor:
+    def decode_image(self, x_0_pred_out: torch.Tensor) -> torch.Tensor:               
         output_latent = self.vae.decode(
             x_0_pred_out / self.vae.config.scaling_factor, return_dict=False
         )[0]
         return output_latent
 
     def predict_x0_batch(self, x_t_latent: torch.Tensor) -> torch.Tensor:
+        added_cond_kwargs = {}
         prev_latent_batch = self.x_t_latent_buffer
-
         if self.use_denoising_batch:
             t_list = self.sub_timesteps_tensor
             if self.denoising_steps_num > 1:
@@ -396,8 +430,13 @@ class StreamDiffusion:
                 self.stock_noise = torch.cat(
                     (self.init_noise[0:1], self.stock_noise[:-1]), dim=0
                 )
-            x_0_pred_batch, model_pred = self.unet_step(x_t_latent, t_list)
+            if self.sdxl:
+                added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
 
+            x_t_latent = x_t_latent.to(self.device)
+            t_list = t_list.to(self.device)
+            x_0_pred_batch, model_pred = self.unet_step(x_t_latent, t_list, added_cond_kwargs=added_cond_kwargs)
+            
             if self.denoising_steps_num > 1:
                 x_0_pred_out = x_0_pred_batch[-1].unsqueeze(0)
                 if self.do_add_noise:
@@ -420,7 +459,9 @@ class StreamDiffusion:
                 ).repeat(
                     self.frame_bff_size,
                 )
-                x_0_pred, model_pred = self.unet_step(x_t_latent, t, idx)
+                if self.sdxl:
+                    added_cond_kwargs = {"text_embeds": self.add_text_embeds.to(self.device), "time_ids": self.add_time_ids.to(self.device)}
+                x_0_pred, model_pred = self.unet_step(x_t_latent, t, idx=idx, added_cond_kwargs=added_cond_kwargs)
                 if idx < len(self.sub_timesteps_tensor) - 1:
                     if self.do_add_noise:
                         x_t_latent = self.alpha_prod_t_sqrt[
@@ -433,7 +474,6 @@ class StreamDiffusion:
                     else:
                         x_t_latent = self.alpha_prod_t_sqrt[idx + 1] * x_0_pred
             x_0_pred_out = x_0_pred
-
         return x_0_pred_out
 
     @torch.no_grad()
