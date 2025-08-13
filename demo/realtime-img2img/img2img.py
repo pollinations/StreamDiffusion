@@ -41,20 +41,13 @@ class Pipeline:
             field="textarea",
             id="prompt",
         )
-        model: str = Field(
-            "sdxl-turbo",
-            title="Model",
-            field="select",
-            id="model",
-            info="Choose between SD-Turbo and SDXL-Turbo",
-            values=["sdxl-turbo", "sd-turbo"],
+        negative_prompt: str = Field(
+            default_negative_prompt,
+            title="Negative Prompt",
+            field="textarea",
+            id="negative_prompt",
         )
-        # negative_prompt: str = Field(
-        #     default_negative_prompt,
-        #     title="Negative Prompt",
-        #     field="textarea",
-        #     id="negative_prompt",
-        # )
+
         width: int = Field(
             512, min=2, max=15, title="Width", disabled=True, hide=True, id="width"
         )
@@ -73,27 +66,20 @@ class Pipeline:
         # Initialize with SDXL-Turbo by default
         self._init_model("sdxl-turbo")
 
-    def _init_model(self, model_type: str):
-        """Initialize the StreamDiffusion model based on the selected type."""
-        if model_type == "sdxl-turbo":
-            model_path = base_model_sdxl
-            t_index_list = [1]  # Valid options: [0] (strongest), [1] (medium), [0,1] (balanced)
-            num_inference_steps = 3  # Increased from 3 to 4 for finer control
-            guidance_scale = 0.0
-            cfg_type = "self"
-        else:  # sd-turbo
-            model_path = base_model
-            t_index_list = [25, 30]
-            num_inference_steps = 50
-            guidance_scale = 1.2
-            cfg_type = "none"
+    def _init_model(self, model_type: str = "sdxl-turbo"):
+        """Initialize the StreamDiffusion model with SDXL-Turbo."""
+        model_path = base_model_sdxl
+        self.t_index_list = [1]  # Balanced strength for img2img transformation
+        self.num_inference_steps = 4  # Increased from 3 to 4 for finer control
+        self.guidance_scale = 0.0
+        cfg_type = "self"
             
         self.stream = StreamDiffusionWrapper(
             model_id_or_path=model_path,
             use_tiny_vae=self.args.taesd,
             device=self.device,
             dtype=self.torch_dtype,
-            t_index_list=t_index_list,
+            t_index_list=self.t_index_list,
             frame_buffer_size=1,
             width=512,
             height=768,
@@ -118,30 +104,17 @@ class Pipeline:
             guidance_scale=guidance_scale,
         )
         
-        self.current_model = model_type
+        self.current_model = "sdxl-turbo"
 
     def predict(self, params: "Pipeline.InputParams") -> Image.Image:
-        # Check if model needs to be switched
-        if params.model != self.current_model:
-            print(f"Switching from {self.current_model} to {params.model}...")
-            self._init_model(params.model)
-            
         # Check if prompt changed and needs re-preparation
         if params.prompt != self.last_prompt:
-            if self.current_model == "sdxl-turbo":
-                self.stream.prepare(
-                    prompt=params.prompt,
-                    negative_prompt=default_negative_prompt,
-                    num_inference_steps=2,
-                    guidance_scale=0.0,
-                )
-            else:  # sd-turbo
-                self.stream.prepare(
-                    prompt=params.prompt,
-                    negative_prompt=default_negative_prompt,
-                    num_inference_steps=50,
-                    guidance_scale=1.2,
-                )
+            self.stream.prepare(
+                prompt=params.prompt,
+                negative_prompt=default_negative_prompt,
+                num_inference_steps=self.num_inference_steps,
+                guidance_scale=self.guidance_scale,
+            )
             self.last_prompt = params.prompt
             
         image_tensor = self.stream.preprocess_image(params.image)
