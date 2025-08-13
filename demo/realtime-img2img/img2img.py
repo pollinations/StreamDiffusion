@@ -23,7 +23,7 @@ base_model_sdxl = "stabilityai/sdxl-turbo"
 taesd_model = "madebyollin/taesd"
 
 default_prompt = "Octopus in the style of Paul Klee painting, abstract geometric forms, vibrant colors, cubist influence, modernist art, detailed brushwork, artistic masterpiece"
-default_negative_prompt = "black and white, blurry, low resolution, pixelated,  pixel art, low quality, low fidelity"
+default_negative_prompt = "nude. naked. black and white, blurry, low resolution, pixelated,  pixel art, low quality, low fidelity"
 
 page_content = ""
 
@@ -70,7 +70,7 @@ class Pipeline:
         """Initialize the StreamDiffusion model with SDXL-Turbo."""
         model_path = base_model_sdxl
         self.t_index_list = [1]  # Balanced strength for img2img transformation
-        self.num_inference_steps = 4  # Increased from 3 to 4 for finer control
+        self.num_inference_steps = 3  # Increased from 3 to 4 for finer control
         self.guidance_scale = 0.0
         cfg_type = "self"
             
@@ -100,8 +100,8 @@ class Pipeline:
         self.stream.prepare(
             prompt=default_prompt,
             negative_prompt=default_negative_prompt,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
+            num_inference_steps=self.num_inference_steps,
+            guidance_scale=self.guidance_scale,
         )
         
         self.current_model = "sdxl-turbo"
