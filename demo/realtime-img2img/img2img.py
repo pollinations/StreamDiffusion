@@ -78,7 +78,7 @@ class Pipeline:
         if model_type == "sdxl-turbo":
             model_path = base_model_sdxl
             t_index_list = [1]
-            num_inference_steps = 4
+            num_inference_steps = 3
             guidance_scale = 0.0
             cfg_type = "self"
         else:  # sd-turbo

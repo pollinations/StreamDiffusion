@@ -107,21 +107,25 @@ class App:
             try:
 
                 async def generate():
-                    while True:
+                    while self.conn_manager.check_user(user_id):
                         last_time = time.time()
-                        await self.conn_manager.send_json(
-                            user_id, {"status": "send_frame"}
-                        )
-                        params = await self.conn_manager.get_latest_data(user_id)
-                        if params is None:
-                            continue
-                        image = pipeline.predict(params)
-                        if image is None:
-                            continue
-                        frame = pil_to_frame(image)
-                        yield frame
-                        if self.args.debug:
-                            print(f"Time taken: {time.time() - last_time}")
+                        try:
+                            await self.conn_manager.send_json(
+                                user_id, {"status": "send_frame"}
+                            )
+                            params = await self.conn_manager.get_latest_data(user_id)
+                            if params is None:
+                                continue
+                            image = pipeline.predict(params)
+                            if image is None:
+                                continue
+                            frame = pil_to_frame(image)
+                            yield frame
+                            if self.args.debug:
+                                print(f"Time taken: {time.time() - last_time}")
+                        except Exception as e:
+                            logging.error(f"Stream generation error for {user_id}: {e}")
+                            break
 
                 return StreamingResponse(
                     generate(),

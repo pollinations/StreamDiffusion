@@ -55,9 +55,11 @@ class ConnectionManager:
         if user_session:
             queue = user_session["queue"]
             try:
-                return await queue.get()
-            except asyncio.QueueEmpty:
+                # Add timeout to prevent infinite waiting
+                return await asyncio.wait_for(queue.get(), timeout=1.0)
+            except (asyncio.QueueEmpty, asyncio.TimeoutError):
                 return None
+        return None
 
     def delete_user(self, user_id: UUID):
         user_session = self.active_connections.pop(user_id, None)
@@ -93,6 +95,8 @@ class ConnectionManager:
                 await websocket.send_json(data)
         except Exception as e:
             logging.error(f"Error: Send json: {e}")
+            # Clean up disconnected user
+            self.delete_user(user_id)
 
     async def receive_json(self, user_id: UUID) -> Dict:
         try:
