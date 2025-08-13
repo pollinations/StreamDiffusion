@@ -77,8 +77,8 @@ class Pipeline:
         """Initialize the StreamDiffusion model based on the selected type."""
         if model_type == "sdxl-turbo":
             model_path = base_model_sdxl
-            t_index_list = [1]
-            num_inference_steps = 3
+            t_index_list = [1]  # Valid options: [0] (strongest), [1] (medium), [0,1] (balanced)
+            num_inference_steps = 3  # Increased from 3 to 4 for finer control
             guidance_scale = 0.0
             cfg_type = "self"
         else:  # sd-turbo
