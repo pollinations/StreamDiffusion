@@ -80,7 +80,7 @@ class Pipeline:
             512, min=2, max=15, title="Width", disabled=True, hide=True, id="width"
         )
         height: int = Field(
-            512, min=2, max=15, title="Height", disabled=True, hide=True, id="height"
+            768, min=2, max=15, title="Height", disabled=True, hide=True, id="height"
         )
 
     def __init__(self, args: Args, device: torch.device, torch_dtype: torch.dtype):
@@ -117,7 +117,7 @@ class Pipeline:
             t_index_list=t_index_list,
             frame_buffer_size=1,
             width=512,
-            height=512,
+            height=768,
             use_lcm_lora=False,
             output_type="pil",
             warmup=10,
