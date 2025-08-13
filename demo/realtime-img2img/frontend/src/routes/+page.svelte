@@ -8,7 +8,7 @@
   import PipelineOptions from '$lib/components/PipelineOptions.svelte';
   import Spinner from '$lib/icons/spinner.svelte';
   import Warning from '$lib/components/Warning.svelte';
-  import { lcmLiveStatus, lcmLiveActions, LCMLiveStatus } from '$lib/lcmLive';
+  import { lcmLiveStatus, lcmLiveActions, LCMLiveStatus, streamId } from '$lib/lcmLive';
   import { mediaStreamActions, onFrameChangeStore } from '$lib/mediaStream';
   import { getPipelineValues, deboucedPipelineValues } from '$lib/store';
 
@@ -18,8 +18,16 @@
   let isImageMode: boolean = false;
   let maxQueueSize: number = 0;
   let currentQueueSize: number = 0;
+  let isFullscreen = false;
   let queueCheckerRunning: boolean = false;
   let warningMessage: string = '';
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && isFullscreen) {
+      isFullscreen = false;
+    }
+  }
+
   onMount(() => {
     getSettings();
   });
@@ -126,13 +134,22 @@
         <ImagePlayer />
       </div>
       <div class="sm:col-span-2">
-        <Button on:click={toggleLcmLive} {disabled} classList={'text-lg my-1 p-2'}>
-          {#if isLCMRunning}
-            Stop
-          {:else}
-            Start
-          {/if}
-        </Button>
+        <div class="flex gap-2">
+          <Button on:click={toggleLcmLive} {disabled} classList={'text-lg my-1 p-2'}>
+            {#if isLCMRunning}
+              Stop
+            {:else}
+              Start
+            {/if}
+          </Button>
+          <Button 
+            on:click={() => isFullscreen = !isFullscreen} 
+            disabled={!isLCMRunning || !$streamId}
+            classList={'text-lg my-1 p-2'}
+          >
+            Fullscreen
+          </Button>
+        </div>
         <PipelineOptions {pipelineParams}></PipelineOptions>
       </div>
     </article>
@@ -144,6 +161,31 @@
     </div>
   {/if}
 </main>
+
+<svelte:window on:keydown={handleKeydown} />
+
+<!-- Fullscreen overlay -->
+{#if isFullscreen && isLCMRunning && $streamId}
+  <div 
+    class="fixed inset-0 z-50 bg-black flex items-center justify-center"
+    on:click={() => isFullscreen = false}
+    role="button"
+    tabindex="0"
+    on:keydown={(e) => e.key === 'Enter' && (isFullscreen = false)}
+  >
+    <img
+      class="max-h-full max-w-full object-contain"
+      src={'/api/stream/' + $streamId}
+      alt="Fullscreen AI Image"
+    />
+    <button
+      class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300"
+      on:click|stopPropagation={() => isFullscreen = false}
+    >
+      ✕
+    </button>
+  </div>
+{/if}
 
 <style lang="postcss">
   :global(html) {

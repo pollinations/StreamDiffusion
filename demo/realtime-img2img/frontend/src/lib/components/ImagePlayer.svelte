@@ -9,6 +9,8 @@
   $: isLCMRunning = $lcmLiveStatus !== LCMLiveStatus.DISCONNECTED;
   $: console.log('isLCMRunning', isLCMRunning);
   let imageEl: HTMLImageElement;
+  let isFullscreen = false;
+
   async function takeSnapshot() {
     if (isLCMRunning) {
       await snapImage(imageEl, {
@@ -19,7 +21,19 @@
       });
     }
   }
+
+  function toggleFullscreen() {
+    isFullscreen = !isFullscreen;
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && isFullscreen) {
+      isFullscreen = false;
+    }
+  }
 </script>
+
+<svelte:window on:keydown={handleKeydown} />
 
 <div
   class="relative mx-auto aspect-square max-w-lg self-center overflow-hidden rounded-lg border border-slate-300"
@@ -31,6 +45,15 @@
       class="aspect-square w-full rounded-lg"
       src={'/api/stream/' + $streamId}
     />
+    <div class="absolute top-2 right-2">
+      <Button
+        on:click={toggleFullscreen}
+        title={'Fullscreen'}
+        classList={'text-xl text-white p-3 shadow-lg rounded-lg opacity-75 hover:opacity-100 bg-black/50'}
+      >
+        📺
+      </Button>
+    </div>
     <div class="absolute bottom-1 right-1">
       <Button
         on:click={takeSnapshot}
@@ -48,3 +71,26 @@
     />
   {/if}
 </div>
+
+<!-- Fullscreen overlay -->
+{#if isFullscreen && isLCMRunning && $streamId}
+  <div 
+    class="fixed inset-0 z-50 bg-black flex items-center justify-center"
+    on:click={toggleFullscreen}
+    role="button"
+    tabindex="0"
+    on:keydown={(e) => e.key === 'Enter' && toggleFullscreen()}
+  >
+    <img
+      class="max-h-full max-w-full object-contain"
+      src={'/api/stream/' + $streamId}
+      alt="Fullscreen AI Image"
+    />
+    <button
+      class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300"
+      on:click|stopPropagation={toggleFullscreen}
+    >
+      ✕
+    </button>
+  </div>
+{/if}
