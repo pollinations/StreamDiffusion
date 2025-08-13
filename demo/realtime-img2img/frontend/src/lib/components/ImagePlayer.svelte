@@ -9,7 +9,6 @@
   $: isLCMRunning = $lcmLiveStatus !== LCMLiveStatus.DISCONNECTED;
   $: console.log('isLCMRunning', isLCMRunning);
   let imageEl: HTMLImageElement;
-  let isFullscreen = false;
 
   async function takeSnapshot() {
     if (isLCMRunning) {
@@ -21,39 +20,36 @@
       });
     }
   }
-
-  function toggleFullscreen() {
-    isFullscreen = !isFullscreen;
-  }
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && isFullscreen) {
-      isFullscreen = false;
-    }
-  }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
-
-<div
-  class="relative mx-auto aspect-square max-w-lg self-center overflow-hidden rounded-lg border border-slate-300"
-  class:hidden={isFullscreen}
->
-  <!-- svelte-ignore a11y-missing-attribute -->
+<!-- CSS-only fullscreen overlay -->
+<div id="fullscreen-overlay" class="fullscreen-overlay">
   {#if isLCMRunning && $streamId}
     <img
       bind:this={imageEl}
+      class="fullscreen-image"
+      src={'/api/stream/' + $streamId}
+      alt="Fullscreen AI Image"
+    />
+  {/if}
+  <a href="#" class="close-fullscreen">✕</a>
+</div>
+
+<div class="relative mx-auto aspect-square max-w-lg self-center overflow-hidden rounded-lg border border-slate-300">
+  <!-- svelte-ignore a11y-missing-attribute -->
+  {#if isLCMRunning && $streamId}
+    <img
       class="aspect-square w-full rounded-lg"
       src={'/api/stream/' + $streamId}
     />
     <div class="absolute top-2 right-2">
-      <Button
-        on:click={toggleFullscreen}
-        title={'Fullscreen'}
-        classList={'text-xl text-white p-3 shadow-lg rounded-lg opacity-75 hover:opacity-100 bg-black/50'}
+      <a 
+        href="#fullscreen-overlay"
+        class="inline-block text-xl text-white p-3 shadow-lg rounded-lg opacity-75 hover:opacity-100 bg-black/50 no-underline"
+        title="Fullscreen"
       >
         📺
-      </Button>
+      </a>
     </div>
     <div class="absolute bottom-1 right-1">
       <Button
@@ -73,27 +69,54 @@
   {/if}
 </div>
 
-<!-- Fullscreen overlay -->
-{#if isFullscreen && isLCMRunning && $streamId}
-  <div 
-    class="fixed inset-0 z-50 bg-black flex items-center justify-center"
-    on:click={toggleFullscreen}
-    role="button"
-    tabindex="0"
-    on:keydown={(e) => e.key === 'Enter' && toggleFullscreen()}
-  >
-    <img
-      bind:this={imageEl}
-      class="max-h-full max-w-full object-contain will-change-auto"
-      src={'/api/stream/' + $streamId}
-      alt="Fullscreen AI Image"
-      loading="eager"
-    />
-    <button
-      class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300 transition-colors duration-200"
-      on:click|stopPropagation={toggleFullscreen}
-    >
-      ✕
-    </button>
-  </div>
-{/if}
+<style>
+  .fullscreen-overlay {
+    position: fixed;
+    z-index: 99;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .fullscreen-overlay:target {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .fullscreen-image {
+    max-width: 95%;
+    max-height: 95%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+  }
+
+  .fullscreen-overlay:target .fullscreen-image {
+    transform: scale(1);
+  }
+
+  .close-fullscreen {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    color: white;
+    font-size: 2rem;
+    text-decoration: none;
+    opacity: 0.8;
+    transition: opacity 0.2s ease;
+  }
+
+  .close-fullscreen:hover {
+    opacity: 1;
+  }
+</style>
